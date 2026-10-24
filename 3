@@ -1,0 +1,396 @@
+# AeroDrive — Final Reliability, Safety, Integration and Quality Requirements
+
+Extend the existing AeroDrive application with the following requirements. Treat these as mandatory engineering requirements, not optional visual enhancements. Integrate them into the existing application rather than creating duplicate dashboards or separate, disconnected features.
+
+## 15. Single Source of Truth and State Management
+
+Create one authoritative mission state managed by the backend or simulation engine.
+
+Maintain separate, explicit states for:
+- Overall mission.
+- Ground robot.
+- Drone.
+- Individual workflow stages.
+- Communication connections.
+- Hazard verification.
+- Active alerts.
+
+Use validated state transitions instead of arbitrary status changes.
+
+Example mission transitions:
+
+`IDLE → PREPARING → RUNNING → PAUSED → RUNNING → COMPLETED`
+
+Also support `ABORTED` and `ERROR` where appropriate. Invalid transitions must be rejected with a useful error message.
+
+Important rules:
+- A completed mission must not return to Running without an explicit new mission.
+- A paused mission must preserve its current stage.
+- An aborted mission must not automatically resume.
+- A disconnected device must not be marked healthy merely because the frontend is still running.
+- A failed workflow stage must not be shown as completed.
+- Mission progress must be derived from actual workflow state, not a random percentage.
+- The UI, map, alerts, device panels, and reports must read from the same authoritative mission data.
+
+Keep state transitions deterministic so the same test scenario produces the same result.
+
+## 16. Command Validation and Reliable Button Behavior
+
+Every command must have a defined result, preconditions, and failure response.
+
+For each command:
+1. Validate the requested action.
+2. Check the current mission and device states.
+3. Check safety and operational constraints.
+4. Execute or reject the command.
+5. Update authoritative state only after the relevant operation succeeds.
+6. Record the result in the event log.
+7. Return a clear success, rejection, or failure response to the UI.
+
+Prevent double-clicks and repeated network requests from starting duplicate missions. Use unique command IDs or idempotency keys where appropriate.
+
+Disable controls that are invalid for the current state, but also validate commands on the backend. Hiding or disabling a button in the browser is not sufficient security or safety enforcement.
+
+Display loading, success, rejection, timeout, and error states. Never display success merely because a user clicked a button.
+
+## 17. Mission Planning and Preflight Checks
+
+Create a mission configuration screen before a mission can start.
+
+Allow the operator to select:
+- A predefined inspection route.
+- Robot and drone participation.
+- Inspection coverage.
+- Minimum battery thresholds.
+- Mission duration limits.
+- Hazard categories to monitor.
+- Survey speed or simulation speed.
+- Human verification requirements.
+
+Include a preflight checklist covering:
+- Route validity.
+- Robot readiness.
+- Drone readiness.
+- Camera availability.
+- Sensor availability.
+- Communication health.
+- Battery sufficiency.
+- Required configuration.
+- Availability of the detection service.
+- Safety and regulatory prerequisites for real hardware.
+
+Show each item as Passed, Failed, Warning, or Not Checked.
+
+Provide a final mission summary before starting. Do not start automatically when a failed mandatory check exists. Warnings may be allowed only when explicitly configured as non-blocking.
+
+## 18. Robot and Drone Coordination
+
+Model the ground robot and drone as separate devices with independent states and telemetry.
+
+Support these mission strategies:
+
+**Strategy A — Sequential inspection**
+- The robot inspects the selected route.
+- The system identifies sections requiring aerial review.
+- The drone surveys those sections.
+- The results are combined for human verification.
+
+**Strategy B — Coordinated inspection**
+- The robot and drone inspect assigned areas independently or concurrently when their configured capabilities and safety constraints permit.
+- The mission manager coordinates their tasks and records both progress streams.
+- The workflow waits for required observations before final reporting.
+
+**Strategy C — Ground-only fallback**
+- If the drone is unavailable before take-off, allow a ground-only mission only if the operator has enabled that fallback.
+- Mark aerial coverage as incomplete.
+- Clearly state that the mission used reduced coverage.
+
+If the robot fails, do not automatically assume the drone can safely complete the entire task. Evaluate which tasks remain feasible and require operator approval when necessary.
+
+Do not assume the devices have direct communication with each other. The mission manager can coordinate them through the backend.
+
+## 19. Realistic Movement and Simulation Engine
+
+Use a simulation engine with a configurable update interval and deterministic scenario definitions.
+
+For the robot:
+- Update position along the selected route.
+- Keep speed within configured limits.
+- Increase travelled distance according to movement.
+- Reduce battery gradually based on simulated activity.
+- Prevent movement beyond route boundaries.
+- Stop or pause when a configured blocking obstacle is encountered.
+
+For the drone:
+- Enforce configurable altitude, battery, and mission limits.
+- Model take-off, survey, return, and landing separately.
+- Do not permit a new survey task while returning or landing.
+- Model a low-battery return threshold.
+- Prevent the simulation from claiming that the drone has landed before its landing stage completes.
+
+For both devices:
+- Keep telemetry timestamps consistent.
+- Use elapsed time rather than assuming every browser update occurs exactly on schedule.
+- Prevent multiple browser tabs from running duplicate mission engines.
+- Make simulation speed adjustable without altering the recorded real-world timestamps unless the system explicitly distinguishes simulated time from wall-clock time.
+
+Label simulated coordinates, readings, camera imagery, detections, and mission results.
+
+## 20. Fault Injection and Recovery Testing
+
+Add a development-only Scenario Simulator that allows judges and developers to test how the application responds to faults.
+
+Include scenarios for:
+- Robot communication loss.
+- Drone communication loss.
+- Low robot battery.
+- Low drone battery.
+- Obstacle encountered.
+- Camera failure.
+- Sensor failure.
+- Detection service unavailable.
+- Invalid route.
+- Conflicting hazard detections.
+- Backend disconnection.
+- Mission interrupted during a stage.
+- Browser refresh during a mission.
+
+Each scenario must produce a meaningful result. For example, a drone communication failure should trigger a stale-telemetry indicator, an alert, and a safe handling state according to the configured simulation policy.
+
+Do not create a generic error popup for every fault. Implement fault-specific behavior and record the resulting state changes.
+
+Keep fault injection disabled in normal operation and unavailable to unauthorized users in any real deployment.
+
+## 21. Communication and API Contracts
+
+Document and implement clear interfaces between the frontend, mission manager, robot adapter, drone adapter, and detection service.
+
+Example endpoints:
+
+- `POST /api/missions` — create a mission.
+- `POST /api/missions/{id}/start` — request mission start.
+- `POST /api/missions/{id}/pause` — request pause.
+- `POST /api/missions/{id}/resume` — request resume.
+- `POST /api/missions/{id}/abort` — request abort.
+- `GET /api/missions/{id}` — retrieve authoritative mission state.
+- `GET /api/devices` — retrieve device statuses.
+- `GET /api/missions/{id}/events` — retrieve mission events.
+- `GET /api/missions/{id}/hazards` — retrieve hazard records.
+- `POST /api/hazards/{id}/verification` — record a verification decision.
+- `GET /api/missions/{id}/report` — retrieve a mission report.
+
+These endpoints are proposed interfaces; implement them consistently if using a backend. If the initial project uses a frontend-only simulation, create equivalent service methods behind the same conceptual interface so the UI can later be migrated without a complete rewrite.
+
+Use typed request and response schemas. Include:
+- Mission and device IDs.
+- Command IDs.
+- Current state.
+- Event timestamps.
+- Validation errors.
+- Connection health.
+- Versioned API contracts where needed.
+
+Use WebSockets or an equivalent streaming mechanism for live telemetry. Reconnect with bounded backoff, fetch the latest authoritative state after reconnection, and avoid applying duplicate or out-of-order events.
+
+## 22. Persistent Storage and Data Integrity
+
+Store mission records, device events, detections, verification decisions, and report summaries in persistent storage.
+
+For a small prototype, SQLite is sufficient for backend persistence. Use a structured database such as PostgreSQL if the application later needs multiple operators, larger deployments, or more demanding concurrent access.
+
+Requirements:
+- Generate unique mission, device, hazard, and event IDs.
+- Store timestamps consistently in UTC and display them in the operator's selected local timezone.
+- Preserve the original hazard observation when its verification status changes.
+- Keep a record of who changed a verification decision when authentication is enabled.
+- Prevent deletion of historical mission records through accidental reset actions.
+- Handle database errors without silently losing data.
+- Avoid duplicate records when a request is retried.
+- Make reports reproducible from the stored mission data.
+
+If the browser refreshes, reload the active mission state from the authoritative source. Never automatically start a second mission after a refresh.
+
+If storage is temporarily unavailable, show a clear warning and do not claim that a report has been permanently saved.
+
+## 23. Hazard Matching and Confidence Handling
+
+Do not combine detections from the robot and drone solely because they have similar hazard categories.
+
+Where sufficient information exists, compare:
+- Approximate location.
+- Observation time.
+- Hazard category.
+- Image or observation references.
+- Spatial distance between detections.
+- Detection confidence and source quality.
+
+Use configurable matching thresholds. Preserve the original observations even when the system creates a grouped hazard record.
+
+Display these as distinct concepts:
+- Model detection.
+- Candidate match.
+- Cross-checked observation.
+- Human-confirmed hazard.
+
+If matching is uncertain, create a review item instead of silently merging the records.
+
+Do not describe model confidence as probability of truth unless the model is appropriately calibrated and that interpretation is justified.
+
+## 24. Safety Boundaries for Real Hardware
+
+Keep simulation and physical control completely separated.
+
+For actual hardware integration:
+- Use authenticated backend services.
+- Validate all incoming commands.
+- Enforce device-specific operating limits.
+- Apply command timeouts and communication-health monitoring.
+- Reject commands when required safety conditions are not met.
+- Define safe behavior for loss of communication.
+- Use supported robot and drone interfaces.
+- Require an authorized operator for relevant high-risk actions.
+- Record physical command requests, acknowledgements, and failures separately.
+
+A web application is not a substitute for a robot's onboard safety controller, a drone autopilot's failsafe functions, or a physical emergency-stop circuit.
+
+Do not permit arbitrary browser commands to drive motors or operate a drone directly. Do not claim that a software abort has stopped a physical device until the device or its validated controller confirms the appropriate state.
+
+Before any real flight, validate applicable aviation rules, permissions, operating limits, privacy requirements, and the manufacturer's safety procedures.
+
+## 25. Security and Privacy
+
+Implement the following security controls before exposing any hardware-connected deployment to a network:
+
+- Server-side validation of all inputs.
+- Authentication for privileged controls.
+- Role-based permissions for operators and administrators.
+- Secure secret storage using environment variables or an appropriate secrets manager.
+- No API keys or device credentials embedded in frontend code.
+- HTTPS in production.
+- Restricted cross-origin access.
+- Rate limiting for sensitive commands.
+- Safe handling of uploaded images and filenames.
+- Protection against unauthorized mission creation or device control.
+- Audit logging for important operations.
+- Data retention and deletion policies for images, location information, and mission records.
+
+For the student demonstration, use synthetic data and sample images wherever possible. Never include private camera feeds or sensitive location information in public demonstration data.
+
+## 26. Observability and Diagnostics
+
+Create a diagnostic view that shows:
+- Backend health.
+- Frontend-to-backend connectivity.
+- Robot adapter status.
+- Drone adapter status.
+- Detection service status.
+- Database status.
+- Last successful telemetry timestamp for each device.
+- Recent errors and recovery attempts.
+- Active mission ID.
+- Application version.
+
+Use structured logs with timestamps, severity, component, mission ID, and error details where available.
+
+Avoid logging passwords, tokens, private camera images, or unnecessary personal information.
+
+A green backend indicator must not automatically mean that the robot, drone, or detection service is healthy. Show each component's status separately.
+
+## 27. Accessibility and Usability
+
+Make the application usable during a live demonstration and in an operations setting.
+
+Include:
+- Readable text and sufficient colour contrast.
+- Labels and tooltips for unfamiliar metrics.
+- Keyboard navigation for important controls.
+- Confirmation for destructive or high-impact actions.
+- Clear error messages with suggested recovery steps.
+- Visible focus indicators.
+- Status indicators that do not depend on colour alone.
+- A clear distinction between warnings, failures, and normal activity.
+- A compact display for smaller screens.
+
+Do not rely on flashing animations, sound, or colour alone to communicate a critical status.
+
+## 28. Performance and Stability
+
+The application should:
+- Avoid unnecessary rerenders during telemetry updates.
+- Clean up event listeners and WebSocket connections.
+- Prevent duplicate timers and background simulation loops.
+- Handle empty, delayed, or missing data.
+- Paginate or limit long event histories.
+- Avoid loading every historical image at once.
+- Recover from temporary API failures.
+- Provide loading, empty, and error states for every data-dependent page.
+
+Use a central simulation scheduler or backend-controlled engine instead of starting a separate timer in each dashboard component.
+
+## 29. Automated Tests
+
+Implement automated tests for the mission state machine, command validation, simulation engine, persistence, hazard verification, and report generation.
+
+At minimum, test these scenarios:
+
+1. A valid mission starts and receives a unique ID.
+2. A mission without a valid route is rejected.
+3. An unavailable mandatory device blocks mission start.
+4. Pause and resume preserve progress.
+5. Repeated Start requests do not create duplicate missions.
+6. An aborted mission cannot be resumed accidentally.
+7. A low-battery condition produces the configured response.
+8. Lost telemetry is shown as stale or disconnected.
+9. A failed stage cannot be reported as completed.
+10. Hazard verification updates the correct record.
+11. Reports match stored events and verification decisions.
+12. Browser refresh restores state without duplicating actions.
+13. A backend restart does not falsely mark devices as connected.
+14. A failed save is reported rather than silently ignored.
+15. A hardware command timeout is not displayed as a successful physical action.
+
+Add integration tests for the complete simulated mission and browser-level tests for the main user journey.
+
+## 30. Required End-to-End Demonstration
+
+Create one reliable demonstration scenario that can be run repeatedly.
+
+Scenario:
+- Start from an idle dashboard.
+- Select a predefined inspection route.
+- Run the readiness checks.
+- Start the mission.
+- Show the robot navigating.
+- Show the drone completing an aerial survey.
+- Generate at least three predefined sample hazard observations from different sources.
+- Display the hazards on the map.
+- Demonstrate one cross-checked observation and one uncertain observation.
+- Trigger a simulated low-battery or communication alert.
+- Show the corresponding state change.
+- Pause and resume the mission.
+- Complete or explicitly abort the mission.
+- Verify the hazards.
+- Generate and reopen the final report.
+
+The demo must use a controlled scenario rather than random events that might make the presentation unpredictable. Provide a Reset Demo button that resets only the demo state after confirmation.
+
+## 31. Definition of Done
+
+The project is complete only when:
+- The application starts using documented commands on Windows.
+- All primary navigation links work.
+- All mission-control buttons have validated behavior.
+- The robot and drone states are consistent across every screen.
+- Workflow progression follows valid state transitions.
+- Map markers correspond to actual stored hazard records.
+- Alerts correspond to actual simulated or recorded events.
+- Human verification decisions persist.
+- Reports match the underlying mission data.
+- Errors and unavailable services are clearly represented.
+- Simulation mode is impossible to confuse with real hardware mode.
+- The core automated tests pass.
+- The demonstration scenario runs reliably from start to finish.
+- Setup instructions explain how to configure and test the application.
+- No feature is described as real hardware control or real AI detection unless that capability has actually been connected and validated.
+
+Before finishing, run the application, execute the tests, fix the observed errors, and provide a list of any remaining limitations. Do not claim that all tests pass unless they have actually been run successfully.

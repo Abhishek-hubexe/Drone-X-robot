@@ -1,0 +1,18 @@
+Build a modern, futuristic, responsive website called **AeroDrive — Smart Vehicle Robotics & Drones**, an intelligent automation platform that demonstrates how a ground robotic vehicle and an aerial drone work together to inspect roads, detect obstacles, and identify potential hazards.
+
+The website should have a sleek dark navy and electric-blue theme, smooth animations, modern typography, and a professional robotics dashboard.
+
+**Core features:**
+1. **Live Dashboard:** Display the ground robot's status, drone status, battery levels, connection status, and inspection progress using simulated data.
+2. **Automation Process:** Create a visual workflow showing the stages: Start Mission → Ground Robot Navigation → Drone Aerial Scan → AI Hazard Detection → Dashboard Alert → Human Verification.
+3. **Interactive Map:** Show a sample inspection route, robot position, drone position, and detected hazard markers.
+4. **AI Detection Panel:** Display sample pothole and obstacle detections with images, confidence scores, timestamps, and location information.
+5. **Mission Controls:** Include Start, Pause, Resume, and Stop buttons that update the simulated mission state.
+6. **Inspection Reports:** Generate a summary of completed missions, detected hazards, inspection duration, and system performance.
+7. **Responsive Design:** Ensure the website works smoothly on desktop, tablet, and mobile.
+
+Use realistic sample data and clearly label all simulated readings. Organize the website into Dashboard, Mission Control, Automation Workflow, AI Detection, and Reports sections.
+
+Build a functional frontend with reusable components, smooth transitions, interactive charts, and a clear user interface. If real hardware integration is not available, simulate the robot, drone, sensor readings, and automation workflow without pretending to control actual devices.
+
+Structure the code so that real robot APIs, drone telemetry, cameras, and AI detection services can be integrated later. Make the project easy to run locally, with clear setup instructions.
